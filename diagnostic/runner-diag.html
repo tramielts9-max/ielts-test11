@@ -34,10 +34,10 @@
     }
 
     .runner-container {
-  width: 98vw !important;
-  max-width: 1680px !important;
-  margin: 0 auto !important;
-}
+      width: 98vw !important;
+      max-width: 1680px !important;
+      margin: 0 auto !important;
+    }
 
     /* HEADER PHÒNG THI STICKY */
     .runner-header {
@@ -64,6 +64,7 @@
     .timer-badge {
       font-family: monospace; font-size: 18px; font-weight: 900; background: #FEF3C7; color: #92400E;
       padding: 6px 14px; border-radius: 12px; border: 1.5px solid #FCD34D; display: inline-flex; align-items: center; gap: 6px;
+      transition: all 0.3s ease;
     }
 
     /* VÙNG CHỨA CÂU HỎI (EXAM CARD) */
@@ -258,7 +259,6 @@
       <audio id="diagAudioPlayer" controls style="height: 40px; outline: none;"></audio>
     </div>
 
-    <!-- KHUNG RENDER CÂU HỎI LISTENING ĐIỀU KHIỂN BỞI DIAG-LISTENING.JS -->
     <div id="listeningQuestionsMount">
       <div style="text-align: center; padding: 30px; font-weight: 800; color: #64748B;">
         ⏳ Đang nạp dữ liệu bài thi nghe...
@@ -279,7 +279,7 @@
        PHẦN 3: READING (TWO-TIER HOẶC CHUẨN CAMBRIDGE 21)
        ========================================================================= -->
   <div id="section_reading" class="exam-section-card" style="display: none;">
-    <div style="border-bottom: 2px solid #F4EFEB; padding-bottom: 12px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+    <div style="border-bottom: 2px solid #F4EFEB; padding-bottom: 12px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: gap: 10px;">
       <div>
         <h3 style="margin: 0; color: var(--tram-red); font-size: 18px; font-weight: 900;">
           <i class="fa-solid fa-book-open"></i> PHẦN 3: READING CHẨN ĐOÁN (NẠP ĐỘNG TỪ FILE JSON)
@@ -313,7 +313,6 @@
        PHẦN 4: WRITING DỊCH THUẬT & DÀN Ý (ĐIỀU KHIỂN BỞI DIAG-WRITING.JS)
        ========================================================================= -->
   <div id="section_writing" class="exam-section-card" style="display: none;">
-    <!-- CONTAINER MOUNT ĐỘNG DO DIAG-WRITING.JS RENDER -->
     <div id="writingMountContainer">
       <div style="text-align: center; padding: 30px; font-weight: 800; color: #64748B;">
         ⏳ Đang nạp dữ liệu bài thi Viết...
@@ -331,49 +330,18 @@
   </div>
 
   <!-- =========================================================================
-       PHẦN 5: SPEAKING (THU ÂM & PHẢN XẠ GIỌNG NÓI)
+       PHẦN 5: SPEAKING (CONTAINER NẠP ĐỘNG & BẢO TOÀN NÚT NỘP BÀI TỔNG THỂ)
        ========================================================================= -->
   <div id="section_speaking" class="exam-section-card" style="display: none;">
-    <div style="border-bottom: 2px solid #F4EFEB; padding-bottom: 12px; margin-bottom: 16px;">
-      <h3 style="margin: 0; color: #D97706; font-size: 18px; font-weight: 900;">
-        <i class="fa-solid fa-microphone"></i> PHẦN 5: PHẢN XẠ NÓI TIẾNG ANH (SPEAKING)
-      </h3>
-      <p style="margin: 4px 0 0 0; font-size: 13px; font-weight: 700; color: #64748B;">
-        Bấm micro và trả lời trực tiếp bằng tiếng Anh. Transcript câu trả lời sẽ được lưu và chấm điểm AI.
-      </p>
+    
+    <!-- 🔴 KHUNG MOUNT ĐỘNG: NƠI DIAG-SPEAKING.JS TỰ ĐỘNG ĐỔ CÂU HỎI TỪ CÁC FILE JSON MỚI -->
+    <div id="speakingQuestionsMount">
+      <div style="text-align: center; padding: 36px 20px; font-weight: 800; color: #64748B;">
+        ⏳ Đang nạp danh sách câu hỏi Speaking từ hệ thống...
+      </div>
     </div>
 
-    <div class="q-item-box">
-      <div style="font-size: 14.5px; font-weight: 900; color: #92400E; margin-bottom: 10px;" id="spkQ1Title">
-        Câu hỏi 1: "Do you work or are you a student? What do you like most about your studies or career?"
-      </div>
-
-      <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
-        <button type="button" id="btnRecSpeaking1" onclick="window.toggleDiagSpeech('diag_spk_1', 'btnRecSpeaking1')" class="btn-3d btn-3d-red" style="padding: 10px 18px; font-size: 13px;">
-          <i class="fa-solid fa-microphone"></i> Bấm để nói tiếng Anh
-        </button>
-        <span id="statusRec1" style="font-size: 12.5px; font-weight: 800; color: #64748B;">Chưa ghi âm</span>
-      </div>
-
-      <textarea id="diag_spk_1" class="diag-textarea" style="height: 80px;" placeholder="Bản ký âm câu trả lời sẽ xuất hiện tại đây..."></textarea>
-    </div>
-
-    <div class="q-item-box" style="margin-top: 18px;">
-      <div style="font-size: 14.5px; font-weight: 900; color: #92400E; margin-bottom: 10px;" id="spkQ2Title">
-        Câu hỏi 2: "How often do you use English in your daily life or studies?"
-      </div>
-
-      <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
-        <button type="button" id="btnRecSpeaking2" onclick="window.toggleDiagSpeech('diag_spk_2', 'btnRecSpeaking2')" class="btn-3d btn-3d-red" style="padding: 10px 18px; font-size: 13px;">
-          <i class="fa-solid fa-microphone"></i> Bấm để nói tiếng Anh
-        </button>
-        <span id="statusRec2" style="font-size: 12.5px; font-weight: 800; color: #64748B;">Chưa ghi âm</span>
-      </div>
-
-      <textarea id="diag_spk_2" class="diag-textarea" style="height: 80px;" placeholder="Bản ký âm câu trả lời sẽ xuất hiện tại đây..."></textarea>
-    </div>
-
-    <!-- NÚT NỘP BÀI TỔNG THỂ -->
+    <!-- KHU VỰC CỐ ĐỊNH: NÚT NỘP BÀI TỔNG THỂ (TUYỆT ĐỐI KHÔNG BỊ GHI ĐÈ) -->
     <div style="margin-top: 28px; border-top: 2px dashed #E8E2D8; padding-top: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
       <button type="button" onclick="window.switchSkillSection('writing')" class="btn-3d btn-3d-white">
         &larr; Quay lại Writing
