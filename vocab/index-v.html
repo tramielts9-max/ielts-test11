@@ -107,7 +107,7 @@
       <div class="tram-roundel-mini"></div>
       <div>
         <div class="vocab-app-title">SMART VOCAB</div>
-        <div class="vocab-app-sub">HỌC & KIỂM TRA 30 TỪ HỌC THUẬT TRỌN GÓI</div>
+        <div class="vocab-app-sub">HỌC & KIỂM TRA TỪ VỰNG HỌC THUẬT TRỌN GÓI</div>
       </div>
     </div>
 
@@ -118,16 +118,23 @@
     </div>
   </header>
 
-  <!-- THANH CHỌN KHÓA HỌC -->
+  <!-- THANH CHỌN KHÓA HỌC & NÚT KHẢO TỔNG HỢP -->
   <div class="course-picker-card" id="coursePickerSection">
     <div class="course-picker-label">
       <span class="icon-book">📚</span>
       <b>KHÓA HỌC TỪ VỰNG:</b>
+      <select id="courseSelectorDropdown" class="duo-select-picker" style="margin-left: 8px;">
+        <option value="course_ielts_300">300 Từ Học Thuật IELTS Cốt Lõi (10 Bài)</option>
+        <option value="course_ielts_540">540 Từ Vựng IELTS Theo Chủ Đề Chuyên Sâu (18 Bài)</option>
+        <option value="course_core_3000">3000 Từ Vựng Tiếng Anh Thông Dụng (60 Chủ Đề)</option>
+      </select>
     </div>
-    <select id="courseSelectorDropdown" class="duo-select-picker">
-      <option value="course_ielts_300">300 Từ Học Thuật IELTS Cốt Lõi (10 Bài)</option>
-      <option value="course_ielts_540">540 Từ Vựng IELTS Theo Chủ Đề Chuyên Sâu (18 Bài)</option>
-    </select>
+
+    <div style="display: flex; gap: 10px; align-items: center;">
+      <button type="button" id="btnOpenCustomDrillModal" class="btn-3d btn-3d-red" style="font-size: 13.5px; padding: 10px 20px;">
+        🎯 Khảo Tổng Hợp (Nhiều Unit)
+      </button>
+    </div>
   </div>
 
   <!-- =========================================================================
@@ -145,7 +152,7 @@
   </main>
 
   <!-- =========================================================================
-       MÀN HÌNH 2: BẢNG KIỂM TRA LIST 30 TỪ TRỌN GÓI (CHIA 2 CỘT)
+       MÀN HÌNH 2: BẢNG KIỂM TRA LIST TỪ TRỌN GÓI (CHIA 2 CỘT)
        ========================================================================= -->
   <div id="listExamScreen" style="display: none; padding-bottom: 60px;">
     <div class="exam-paper-container">
@@ -159,7 +166,7 @@
             BÀI KIỂM TRA TỪ VỰNG: UNIT 1
           </h2>
           <div style="font-size: 13.5px; color: #64748B; font-weight: 700; margin-top: 4px;" id="examStudentNameDisplay">
-            Học viên: ... • Mục tiêu: Điền đúng 30 nghĩa tiếng Việt để AI chấm trọn gói
+            Học viên: ... • Mục tiêu: Điền đúng nghĩa tiếng Việt để AI chấm trọn gói
           </div>
         </div>
 
@@ -209,7 +216,7 @@
           </div>
 
           <button type="button" id="btnSubmitVocabList" class="btn-3d btn-3d-red" style="padding: 13px 26px; font-size: 15px;">
-            🚀 NỘP BÀI & GỌI AI CHẤM TRỌN GÓI 30 TỪ
+            🚀 NỘP BÀI & GỌI AI CHẤM TRỌN GÓI
           </button>
         </div>
       </form>
@@ -292,10 +299,100 @@
     </div>
   </div>
 
+  <!-- =========================================================================
+       MODAL: CẤU HÌNH BÀI KHẢO TỔNG HỢP (MULTI-UNIT CUSTOM DRILL)
+       ========================================================================= -->
+  <div id="modalCustomDrill" class="modal-overlay" style="display: none;">
+    <div class="modal-card" style="max-width: 780px;">
+      
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 24px;">🎯</span>
+          <div>
+            <h3 style="margin: 0; font-size: 18px;">KHẢO TỔNG HỢP TỪ VỰNG</h3>
+            <div style="font-size: 12.5px; color: #64748B; font-weight: 700; margin-top: 2px;">
+              Chọn nhiều Unit bất kỳ - Hệ thống tự động bốc ngẫu nhiên & chia đều câu hỏi
+            </div>
+          </div>
+        </div>
+        <button type="button" class="btn-close-modal" id="btnCloseDrillModal">&times;</button>
+      </div>
+
+      <div class="modal-body" style="padding: 22px 24px; gap: 20px;">
+        
+        <!-- BƯỚC 1: CHỌN UNIT -->
+        <div>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
+            <b style="font-size: 14.5px; color: #1E293B;">
+              1. CHỌN CÁC UNIT MUỐN KHẢO (<span id="drillSelectedUnitsCount" style="color: var(--tram-red);">0</span> Unit đã chọn):
+            </b>
+            <div style="display: flex; gap: 6px;">
+              <button type="button" id="btnDrillSelectAll" class="btn-chip-action">✓ Chọn tất cả</button>
+              <button type="button" id="btnDrillDeselectAll" class="btn-chip-action">✕ Bỏ chọn</button>
+            </div>
+          </div>
+
+          <div id="drillUnitListGrid" class="drill-unit-grid">
+            <!-- Danh sách checkbox từng Unit được render tự động qua JS -->
+          </div>
+        </div>
+
+        <!-- BƯỚC 2: CHỌN TỔNG SỐ CÂU HỎI -->
+        <div style="border-top: 1.5px dashed #E2E8F0; padding-top: 16px;">
+          <b style="font-size: 14.5px; color: #1E293B; display: block; margin-bottom: 10px;">
+            2. TỔNG SỐ CÂU HỎI MUỐN KHẢO:
+          </b>
+          <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+            <div class="drill-presets-wrap">
+              <button type="button" class="chip-q-preset active" data-count="20">20 câu</button>
+              <button type="button" class="chip-q-preset" data-count="30">30 câu</button>
+              <button type="button" class="chip-q-preset" data-count="50">50 câu</button>
+              <button type="button" class="chip-q-preset" data-count="100">100 câu</button>
+              <button type="button" class="chip-q-preset" data-count="all">Tất cả từ</button>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 13px; font-weight: 800; color: #64748B;">Hoặc tự nhập:</span>
+              <input type="number" id="drillCustomCountInput" min="5" max="3000" value="20" class="drill-count-input">
+            </div>
+          </div>
+          <div id="drillQuotaSummaryNote" style="margin-top: 8px; font-size: 12.5px; font-weight: 800; color: #15803D;">
+            💡 Hệ thống sẽ bốc đều từ các Unit bạn đã tích chọn.
+          </div>
+        </div>
+
+        <!-- BƯỚC 3: HÌNH THỨC KHẢO -->
+        <div style="border-top: 1.5px dashed #E2E8F0; padding-top: 16px;">
+          <b style="font-size: 14.5px; color: #1E293B; display: block; margin-bottom: 10px;">
+            3. HÌNH THỨC KHẢO:
+          </b>
+          <div style="display: flex; gap: 14px; flex-wrap: wrap;">
+            <label class="drill-mode-option">
+              <input type="radio" name="drillExamMode" value="exam_paper" checked>
+              <span>📝 <b>Bảng Điền Nghĩa Trọn Gói</b> (Chấm qua AI Gemini)</span>
+            </label>
+            <label class="drill-mode-option">
+              <input type="radio" name="drillExamMode" value="flashcard">
+              <span>🧠 <b>Luyện Phản Xạ Flashcard</b> (Lật thẻ & tự đánh giá)</span>
+            </label>
+          </div>
+        </div>
+
+      </div>
+
+      <div style="padding: 16px 24px; background: #FAF7F2; border-top: 2px solid var(--duo-border); display: flex; justify-content: flex-end; gap: 10px;">
+        <button type="button" class="btn-3d btn-3d-white" id="btnCancelDrillModal">✕ Đóng lại</button>
+        <button type="button" class="btn-3d btn-3d-red" id="btnLaunchCustomDrill" style="padding: 12px 28px; font-size: 14.5px;">
+          🚀 BẮT ĐẦU KHẢO NGAY
+        </button>
+      </div>
+
+    </div>
+  </div>
+
 </div>
 
 <!-- SCRIPT CONTROLLER DUY NHẤT -->
 <script type="module" src="js-v/app-v.js"></script>
-  <script type="module" src="../js/auth-lock.js"></script>
+<script type="module" src="../js/auth-lock.js"></script>
 </body>
 </html>
