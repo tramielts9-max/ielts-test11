@@ -1,10 +1,10 @@
 /**
  * vocab/js-v/quiz-v.js
- * BỘ ĐIỀU KHIỂN FLASHCARD & PHÒNG THI KHẢO TỪ VỰNG 4 CHẾ ĐỘ (CÓ AI CHẤM ĐỒNG NGHĨA)
- * BẢN FULL ĐẦY ĐỦ 100% - ĐÃ CẬP NHẬT KEY MỚI TỪ PHÂN HỆ GRAMMAR
+ * BỘ ĐIỀU KHIỂN FLASHCARD & PHÒNG THI KHẢO TỪ VỰNG 4 CHẾ ĐỘ
+ * CẬP NHẬT GỌI AI THẨM ĐỊNH TỪ ĐỒNG NGHĨA THEO ĐÚNG 8 MODEL ƯU TIÊN
  */
 
-// 1. MÃ HÓA RUNTIME AUTH KEY MỚI (TỪ GRAMMAR KEY CỦA BẠN)
+// 1. MÃ HÓA RUNTIME AUTH KEY CHO GEMINI AI
 const _AUTH_SEEDS = [
   65, 81, 46, 65, 98, 56, 82, 78, 54, 75, 52, 95, 111, 68, 102, 97,
   106, 111, 54, 107, 54, 106, 48, 118, 110, 83, 82, 87, 95, 87, 110,
@@ -183,7 +183,7 @@ export class QuizController {
   }
 
   // =========================================================================
-  // 2. PHẦN KHẢO TỪ VỰNG (4 CHẾ ĐỘ KIỂM TRA + AI CHẤM ĐỒNG NGHĨA VỚI KEY MỚI)
+  // 2. PHẦN KHẢO TỪ VỰNG (4 CHẾ ĐỘ KIỂM TRA + AI CHẤM ĐỒNG NGHĨA VỚI 8 MODEL)
   // =========================================================================
   renderCurrentTestQuestion() {
     if (this.currentIndex >= this.preparedWords.length) {
@@ -285,16 +285,13 @@ export class QuizController {
     let isCorrect = false;
 
     if (isVnToEn) {
-      // Nhìn Tiếng Việt gõ Tiếng Anh: Bỏ từ loại (n), (v), (adj)
       const cleanTargetWord = item.word.replace(/\s*\(.*?\)/g, '').toLowerCase().trim();
       if (cleanUser === cleanTargetWord) {
         isCorrect = true;
       } else {
-        // Hỏi AI xem có phải từ đồng nghĩa tiếng Anh hợp lệ không
         isCorrect = await this.verifyWithAI(item.word, item.meaning, userText, 'en');
       }
     } else {
-      // Nhìn Tiếng Anh gõ Tiếng Việt: So khớp nhanh hoặc gọi AI thẩm định nghĩa đồng nghĩa
       const cleanMeaning = item.meaning.toLowerCase().trim();
       if (cleanMeaning.includes(cleanUser) || cleanUser.includes(cleanMeaning)) {
         isCorrect = true;
@@ -326,7 +323,7 @@ export class QuizController {
     }
   }
 
-  // GỌI AI KIỂM TRA NGHĨA ĐỒNG NGHĨA VỚI KEY MỚI
+  // GỌI AI KIỂM TRA NGHĨA ĐỒNG NGHĨA VỚI 8 MODEL ƯU TIÊN
   async verifyWithAI(word, meaning, userAns, lang) {
     const apiKey = getDecodedKey();
     const prompt = `
@@ -339,17 +336,33 @@ Hỏi: Câu trả lời của học sinh có ĐÚNG hoặc ĐỒNG NGHĨA chấp
 Trả lời DUY NHẤT một chữ: "YES" hoặc "NO".
     `;
 
-    try {
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-      });
-      const data = await res.json();
-      const txt = (data.candidates?.[0]?.content?.parts?.[0]?.text || "").trim().toUpperCase();
-      return txt.includes("YES");
-    } catch (e) {
-      return false;
+    const models = [
+      'gemini-3.5-flash-lite',
+      'gemini-3.1-flash-lite',
+      'gemini-2.5-flash-lite',
+      'gemini-3.8-flash',
+      'gemini-3.7-flash',
+      'gemini-3.6-flash',
+      'gemini-3.5-flash',
+      'gemini-2.5-flash'
+    ];
+
+    for (const model of models) {
+      try {
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const txt = (data.candidates?.[0]?.content?.parts?.[0]?.text || "").trim().toUpperCase();
+          return txt.includes("YES");
+        }
+      } catch (e) {
+        continue;
+      }
     }
+    return false;
   }
 }
