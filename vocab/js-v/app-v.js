@@ -1,23 +1,12 @@
 /**
  * vocab/js-v/app-v.js
- * BỘ ĐIỀU KHIỂN TỔNG THỂ TỪ VỰNG DUOLINGO X TRẠM IELTS
- * TÍCH HỢP FLASHCARD DARK UI CHUẨN TEST8 (LOA + PHÍM TẮT + ✕ / ✓)
- * VÀ BÀI THI LIST 30 TỪ AI CHẤM TRỌN GÓI
+ * CỔNG TRUNG GIAN (GATEWAY CONTROLLER) DUOLINGO X TRẠM IELTS VOCABULARY
+ * ĐIỀU PHỐI: LỘ TRÌNH BÀI HỌC (300, 540 & 3000 TỪ), FLASHCARD DARK UI,
+ * BÀI THI LIST TỪ ĐIỀN NGHĨA CO GIÃN ĐỘNG & TÍNH NĂNG KHẢO TỔNG HỢP (MULTI-UNIT DRILL)
  */
 
-// 1. MÃ HÓA RUNTIME AUTH KEY CHO GEMINI AI
-const _AUTH_SEEDS = [
-  65, 81, 46, 65, 98, 56, 82, 78, 54, 75, 116, 80, 107, 51, 45, 50,
-  75, 103, 117, 114, 119, 117, 116, 65, 115, 55, 95, 118, 82, 66,
-  121, 81, 110, 113, 67, 48, 77, 86, 55, 52, 66, 119, 107, 82, 107,
-  80, 110, 74, 89, 70, 90, 49, 119
-];
-
-function getDecodedKey() {
-  return _AUTH_SEEDS.map(c => String.fromCharCode(c)).join('');
-}
-
-const CLOUD_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyNErQQFdciAQM0k9KUrACtpX7rxKkopjChYAC2Ubwj5MGzFOeekDEGs8C1n7P9cNR6vg/exec";
+import { DrillEngine } from './drill-engine-v.js';
+import { VocabEvaluator } from './evaluator-v.js';
 
 class VocabApp {
   constructor() {
@@ -30,12 +19,16 @@ class VocabApp {
     this.activeLesson = null;
     this.activeWords = [];
     
+    // Trạng thái Khảo Tổng Hợp
+    this.isCustomDrillActive = false;
+    this.customDrillMeta = null;
+
     // Trạng thái Flashcard
     this.fcCurrentIndex = 0;
     this.isCardFlipped = false;
     this.keyHandler = null;
 
-    // Trạng thái Bài thi List 30 từ
+    // Trạng thái Bài thi List từ
     this.examTimerInterval = null;
     this.examSeconds = 0;
     this.isExamActive = false;
@@ -63,6 +56,7 @@ class VocabApp {
     this.initCourseDropdown();
     this.renderRoadmapLessons();
     this.setupExamListeners();
+    this.setupDrillModalListeners();
     this.checkUrlDeepLink();
   }
 
@@ -71,7 +65,7 @@ class VocabApp {
     if (userLabel) userLabel.innerText = `${this.user.name} (${this.user.email})`;
 
     const localHist = JSON.parse(localStorage.getItem('ielts_local_history') || '[]');
-    const vocabAttempts = localHist.filter(item => (item.moduleType === 'vocab' || (item.testTitle && item.testTitle.includes('Từ vựng'))));
+    const vocabAttempts = localHist.filter(item => (item.moduleType === 'vocab' || (item.testTitle && item.testTitle.includes('Từ vựng')) || (item.testTitle && item.testTitle.includes('Khảo'))));
     
     const xpEl = document.getElementById('userXP');
     if (xpEl) xpEl.innerHTML = `<i class="fa-solid fa-bolt"></i> ${vocabAttempts.length * 30} KN`;
@@ -102,11 +96,12 @@ class VocabApp {
     if (titleEl) titleEl.innerText = this.currentCourse.title;
 
     let totalLearnedAllUnits = 0;
-    const totalWordsAllUnits = this.currentCourse.lessons.length * 30;
+    const totalWordsAllUnits = this.currentCourse.lessons.reduce((acc, cur) => acc + (cur.count || 30), 0);
 
     container.innerHTML = this.currentCourse.lessons.map((lesson) => {
       const stats = this.getUnitStats(lesson.file);
       totalLearnedAllUnits += stats.learnedCount;
+      const lessonCount = lesson.count || 30;
 
       return `
         <div class="vocab-unit-card">
@@ -125,10 +120,10 @@ class VocabApp {
 
               <div class="unit-stat-pills">
                 <span class="pill-learned">
-                  <i class="fa-solid fa-circle-check"></i> Đã thuộc: <b>${stats.learnedCount}/30 từ</b>
+                  <i class="fa-solid fa-circle-check"></i> Đã thuộc: <b>${stats.learnedCount}/${lessonCount} từ</b>
                 </span>
                 <span class="pill-score">
-                  <i class="fa-solid fa-trophy"></i> Điểm cao nhất: <b>${stats.bestScore}/30</b>
+                  <i class="fa-solid fa-trophy"></i> Điểm cao nhất: <b>${stats.bestScore}/${lessonCount}</b>
                 </span>
                 <span class="pill-attempts">
                   <i class="fa-solid fa-rotate-right"></i> Đã làm: <b>${stats.attemptsCount} lần</b>
@@ -142,7 +137,7 @@ class VocabApp {
               🧠 Học Từ Mới
             </button>
             <button type="button" onclick="window.startVocabListExam('${lesson.file}', '${lesson.title}', ${lesson.unit})" class="btn-3d btn-3d-red">
-              📝 Kiểm Tra 30 Từ
+              📝 Kiểm Tra ${lessonCount} Từ
             </button>
             ${stats.attemptsCount > 0 ? `
               <button type="button" onclick="window.viewPastVocabAttempt('${lesson.file}', '${lesson.title}', ${lesson.unit})" class="btn-3d btn-3d-white" title="Xem lại lần làm gần nhất">
@@ -162,7 +157,8 @@ class VocabApp {
 
   getUnitStorageKey(file) {
     const cleanEmail = this.user.email.replace(/[^a-zA-Z0-9]/g, '_');
-    return `sv_unit_stats_${cleanEmail}_${file}`;
+    const cleanFile = (file || 'default').replace(/[^a-zA-Z0-9]/g, '_');
+    return `sv_unit_stats_${cleanEmail}_${cleanFile}`;
   }
 
   getUnitStats(file) {
@@ -175,17 +171,26 @@ class VocabApp {
   }
 
   saveUnitStats(file, stats) {
-    localStorage.setItem(this.getUnitStorageKey(file), JSON.stringify(stats));
+    try {
+      localStorage.setItem(this.getUnitStorageKey(file), JSON.stringify(stats));
+    } catch(e) {}
   }
 
   // =========================================================================
   // 2. MÀN HÌNH FLASHCARD DARK UI (CHUẨN TEST8)
   // =========================================================================
-  async openFlashcard(file, title) {
+  async openFlashcard(file, title, customWordsArray = null) {
     try {
-      const res = await fetch(`data-v/${file}`);
-      this.activeWords = await res.json();
-      this.activeLesson = { file, title };
+      if (customWordsArray && Array.isArray(customWordsArray)) {
+        this.activeWords = customWordsArray;
+        this.activeLesson = { file: file || 'custom_drill', title: title || 'Khảo Tổng Hợp' };
+      } else {
+        const res = await fetch(`data-v/${file}`);
+        const data = await res.json();
+        this.activeWords = Array.isArray(data) ? data : (data.words || []);
+        this.activeLesson = { file, title };
+      }
+
       this.fcCurrentIndex = 0;
       this.isCardFlipped = false;
 
@@ -245,7 +250,7 @@ class VocabApp {
   renderCurrentFlashcard() {
     if (this.fcCurrentIndex >= this.activeWords.length) {
       if (window.speechSynthesis) window.speechSynthesis.cancel();
-      alert("🎉 Em đã xem hết 30 từ vựng của bài học! Giờ hãy vào làm bài kiểm tra để AI đánh giá nhé.");
+      alert(`🎉 Em đã xem hết ${this.activeWords.length} từ vựng! Giờ hãy vào làm bài kiểm tra để AI đánh giá nhé.`);
       this.backToPortal();
       return;
     }
@@ -259,9 +264,9 @@ class VocabApp {
     const exampleEl = document.getElementById('fcExample');
 
     if (counterEl) counterEl.innerHTML = `Thẻ <b>${this.fcCurrentIndex + 1} / ${this.activeWords.length}</b>`;
-    if (wordEn) wordEn.innerText = item.word;
+    if (wordEn) wordEn.innerText = item.word || '';
     if (phonetic) phonetic.innerText = item.phonetic || '';
-    if (meaningVn) meaningVn.innerText = item.meaning;
+    if (meaningVn) meaningVn.innerText = item.meaning || '';
 
     if (exampleEl) {
       if (item.example) {
@@ -272,11 +277,8 @@ class VocabApp {
       }
     }
 
-    // Reset về mặt trước
     this.isCardFlipped = false;
     card?.classList.remove('is-flipped');
-
-    // Tự động phát âm từ tiếng Anh
     this.speakCurrentWord();
   }
 
@@ -289,12 +291,11 @@ class VocabApp {
 
   handleFlashcardAnswer(isLearned) {
     const item = this.activeWords[this.fcCurrentIndex];
-    if (item && this.activeLesson) {
+    if (item && this.activeLesson && !this.isCustomDrillActive) {
       const stats = this.getUnitStats(this.activeLesson.file);
       if (!stats.learnedWordIds) stats.learnedWordIds = [];
 
       if (isLearned) {
-        // Đã thuộc -> lưu ID từ vào danh sách
         if (!stats.learnedWordIds.includes(item.id)) {
           stats.learnedWordIds.push(item.id);
           stats.learnedCount = stats.learnedWordIds.length;
@@ -308,13 +309,23 @@ class VocabApp {
   }
 
   // =========================================================================
-  // 3. MÀN HÌNH BÀI THI: BẢNG LIST 30 TỪ CHIA 2 CỘT
+  // 3. MÀN HÌNH BÀI THI: BẢNG LIST TỪ CO GIÃN ĐỘNG (CHIA 2 CỘT)
   // =========================================================================
-  async openListExam(file, title, unitNum) {
+  async openListExam(file, title, unitNum, customWordsArray = null, customMeta = null) {
     try {
-      const res = await fetch(`data-v/${file}`);
-      this.activeWords = await res.json();
-      this.activeLesson = { file, title, unitNum };
+      if (customWordsArray && Array.isArray(customWordsArray)) {
+        this.activeWords = customWordsArray;
+        this.isCustomDrillActive = true;
+        this.customDrillMeta = customMeta;
+        this.activeLesson = { file: file || 'custom_drill', title: title || 'Khảo Tổng Hợp', unitNum: null };
+      } else {
+        const res = await fetch(`data-v/${file}`);
+        const data = await res.json();
+        this.activeWords = Array.isArray(data) ? data : (data.words || []);
+        this.isCustomDrillActive = false;
+        this.customDrillMeta = null;
+        this.activeLesson = { file, title, unitNum };
+      }
 
       this.removeFlashcardShortcuts();
       if (window.speechSynthesis) window.speechSynthesis.cancel();
@@ -324,11 +335,14 @@ class VocabApp {
       document.getElementById('flashcardScreen').style.display = 'none';
       document.getElementById('listExamScreen').style.display = 'block';
 
+      const totalWords = this.activeWords.length;
       document.getElementById('examUnitTitleDisplay').innerText = `BÀI KIỂM TRA TỪ VỰNG: ${title.toUpperCase()}`;
-      document.getElementById('examStudentNameDisplay').innerText = `Học viên: ${this.user.name} • Mục tiêu: Điền đúng nghĩa 30 từ`;
+      document.getElementById('examStudentNameDisplay').innerText = `Học viên: ${this.user.name} • Mục tiêu: Điền đúng nghĩa ${totalWords} từ để AI chấm`;
 
       this.renderExamTableInputs();
-      this.restoreExamDraft();
+      if (!this.isCustomDrillActive) {
+        this.restoreExamDraft();
+      }
       this.startExamTimer();
 
       document.getElementById('aiExamResultContainer').style.display = 'none';
@@ -341,11 +355,16 @@ class VocabApp {
   renderExamTableInputs() {
     const leftTbody = document.getElementById('examTbodyLeft');
     const rightTbody = document.getElementById('examTbodyRight');
+    if (!leftTbody || !rightTbody) return;
+
     leftTbody.innerHTML = '';
     rightTbody.innerHTML = '';
 
-    const first15 = this.activeWords.slice(0, 15);
-    const last15 = this.activeWords.slice(15, 30);
+    const total = this.activeWords.length;
+    const half = Math.ceil(total / 2);
+
+    const firstHalf = this.activeWords.slice(0, half);
+    const secondHalf = this.activeWords.slice(half);
 
     const renderRows = (words, startIndex) => {
       return words.map((w, idx) => {
@@ -365,19 +384,24 @@ class VocabApp {
       }).join('');
     };
 
-    leftTbody.innerHTML = renderRows(first15, 0);
-    rightTbody.innerHTML = renderRows(last15, 15);
+    leftTbody.innerHTML = renderRows(firstHalf, 0);
+    rightTbody.innerHTML = renderRows(secondHalf, half);
   }
 
   setupExamListeners() {
     const form = document.getElementById('vocabTestForm');
     let autoSaveTimeout = null;
     form?.addEventListener('input', () => {
+      if (this.isCustomDrillActive) return;
       clearTimeout(autoSaveTimeout);
       autoSaveTimeout = setTimeout(() => this.saveExamDraft(), 1500);
     });
 
     document.getElementById('btnSaveDraftVocab')?.addEventListener('click', () => {
+      if (this.isCustomDrillActive) {
+        alert("💡 Bài Khảo Tổng Hợp ngẫu nhiên không hỗ trợ lưu bản nháp.");
+        return;
+      }
       this.saveExamDraft();
       alert("✅ Đã lưu tạm bài kiểm tra thành công! Em có thể thoát ra và quay lại điền tiếp.");
     });
@@ -392,7 +416,7 @@ class VocabApp {
   }
 
   saveExamDraft() {
-    if (!this.activeLesson) return;
+    if (!this.activeLesson || this.isCustomDrillActive) return;
     const inputsData = {};
     this.activeWords.forEach(w => {
       const el = document.getElementById(`inp_vocab_${w.id}`);
@@ -404,7 +428,9 @@ class VocabApp {
       inputs: inputsData,
       updatedAt: new Date().toISOString()
     };
-    localStorage.setItem(this.getExamDraftKey(), JSON.stringify(draft));
+    try {
+      localStorage.setItem(this.getExamDraftKey(), JSON.stringify(draft));
+    } catch(e) {}
   }
 
   restoreExamDraft() {
@@ -425,13 +451,17 @@ class VocabApp {
   }
 
   clearExamDraft() {
-    if (this.activeLesson) {
-      localStorage.removeItem(this.getExamDraftKey());
+    if (this.activeLesson && !this.isCustomDrillActive) {
+      try {
+        localStorage.removeItem(this.getExamDraftKey());
+      } catch(e) {}
     }
   }
 
   startExamTimer() {
     this.stopExamTimer();
+    this.examSeconds = 0;
+    this.updateTimerDisplay();
     this.examTimerInterval = setInterval(() => {
       this.examSeconds++;
       this.updateTimerDisplay();
@@ -454,7 +484,7 @@ class VocabApp {
   }
 
   // =========================================================================
-  // 4. AI CHẤM ĐIỂM BẢNG 30 TỪ
+  // 4. CHẤM ĐIỂM AI QUA EVALUATOR VÀ ĐỒNG BỘ GOOGLE DRIVE
   // =========================================================================
   async submitVocabListForAIGrading() {
     const studentInputs = [];
@@ -480,101 +510,32 @@ class VocabApp {
 
     const submitBtn = document.getElementById('btnSubmitVocabList');
     submitBtn.disabled = true;
-    submitBtn.innerHTML = `⏳ AI Gemini đang chấm trọn gói 30 từ...`;
+    submitBtn.innerHTML = `⏳ AI Gemini đang chấm trọn gói ${this.activeWords.length} từ...`;
 
     this.stopExamTimer();
 
-    const prompt = `
-Bạn là Giáo viên Khảo thí Từ vựng tiếng Anh.
-Nhiệm vụ: Chấm điểm bài kiểm tra từ vựng (gồm 30 từ) dưới đây của học sinh.
-TIÊU CHÍ CHẤM:
-- Chấp nhận các từ đồng nghĩa tiếng Việt hợp lý hoặc cách dịch sát nghĩa (không bắt bẻ từng dấu câu).
-- Nếu học sinh hiểu đúng bản chất nghĩa từ -> isCorrect: true.
-- Nếu sai hoàn toàn hoặc để trống -> isCorrect: false.
-
-DANH SÁCH 30 TỪ VÀ BÀI LÀM CỦA HỌC SINH:
-${JSON.stringify(studentInputs, null, 2)}
-
-HÃY TRẢ VỀ DUY NHẤT 1 CHUỖI JSON THUẦN (KHÔNG MARKDOWN, KHÔNG \`\`\`json):
-{
-  "totalCorrect": 25,
-  "summary": "Nhận xét tổng quát 1-2 câu ngắn gọn về độ hiểu từ vựng của em.",
-  "results": [
-    {
-      "id": "w300_001",
-      "isCorrect": true,
-      "feedback": "Đúng nghĩa."
-    }
-  ]
-}
-`;
-
     try {
-      const apiKey = getDecodedKey();
-      const aiResponse = await this.callGeminiRaw(apiKey, prompt);
-      const cleanJson = aiResponse.replace(/^```json/, '').replace(/```$/, '').trim();
-      const gradingResult = JSON.parse(cleanJson);
+      const examTitle = this.activeLesson?.title || "Bài kiểm tra từ vựng";
+      const gradingResult = await VocabEvaluator.gradeVocabList(studentInputs, examTitle);
 
       this.applyGradingResultUI(gradingResult, studentInputs);
       this.clearExamDraft();
     } catch (err) {
-      console.warn("Lỗi AI chấm, chuyển sang chấm bằng thuật toán:", err);
-      this.fallbackLocalGrading(studentInputs);
+      console.warn("Lỗi quy trình chấm:", err);
+      const fallbackResult = VocabEvaluator.fallbackLocalGrading(studentInputs);
+      this.applyGradingResultUI(fallbackResult, studentInputs);
       this.clearExamDraft();
     } finally {
       submitBtn.disabled = false;
-      submitBtn.innerHTML = `🚀 NỘP BÀI & GỌI AI CHẤM TRỌN GÓI 30 TỪ`;
+      submitBtn.innerHTML = `🚀 NỘP BÀI & GỌI AI CHẤM TRỌN GÓI`;
     }
-  }
-
-  async callGeminiRaw(apiKey, promptText) {
-    const models = [
-      'gemini-3.5-flash-lite',
-      'gemini-3.1-flash-lite',
-      'gemini-2.0-flash-lite',
-      'gemini-2.0-flash',
-      'gemini-1.5-flash'
-    ];
-
-    for (const m of models) {
-      try {
-        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${apiKey}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: promptText }] }] })
-        });
-        if (res.ok) {
-          const data = await res.json();
-          const txt = data.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (txt) return txt;
-        }
-      } catch (e) {}
-    }
-    throw new Error("Không thể kết nối đến AI.");
-  }
-
-  fallbackLocalGrading(studentInputs) {
-    let correctCount = 0;
-    const results = studentInputs.map(item => {
-      const cleanStd = item.standardMeaning.toLowerCase();
-      const cleanUser = item.studentMeaning.toLowerCase();
-      const isOk = cleanUser !== '(bỏ trống)' && (cleanStd.includes(cleanUser) || cleanUser.includes(cleanStd.split('/')[0].trim()));
-      if (isOk) correctCount++;
-      return { id: item.id, isCorrect: isOk, feedback: isOk ? "Đúng nghĩa." : `Nghĩa chuẩn: ${item.standardMeaning}` };
-    });
-
-    const gradingResult = {
-      totalCorrect: correctCount,
-      summary: `Em đã hoàn thành bài kiểm tra 30 từ với kết quả ${correctCount}/30 từ đúng.`,
-      results
-    };
-    this.applyGradingResultUI(gradingResult, studentInputs);
   }
 
   applyGradingResultUI(gradingResult, studentInputs) {
     const resultMap = new Map();
     (gradingResult.results || []).forEach(r => resultMap.set(r.id, r));
 
+    const totalWords = this.activeWords.length;
     let correctCount = gradingResult.totalCorrect !== undefined ? gradingResult.totalCorrect : 0;
     const learnedIdsToSave = [];
 
@@ -602,58 +563,102 @@ HÃY TRẢ VỀ DUY NHẤT 1 CHUỖI JSON THUẦN (KHÔNG MARKDOWN, KHÔNG \`\`\
     const badge = document.getElementById('examScoreBadge');
     const summary = document.getElementById('aiSummaryFeedback');
 
-    resBox.style.display = 'block';
-    badge.innerText = `Điểm: ${correctCount}/30 (${Math.round((correctCount/30)*100)}%)`;
-    summary.innerHTML = `
-      <div style="margin-bottom:6px;"><b>Nhận xét:</b> ${gradingResult.summary || 'Em đã hoàn thành xuất sắc bài kiểm tra 30 từ!'}</div>
-      <div style="font-size:12.5px; color:#15803D;">⏱️ Thời gian làm: <b>${Math.floor(this.examSeconds/60)}p ${this.examSeconds%60}s</b> • Bài thi đã được đồng bộ lên Lịch sử Trang Chủ & Google Drive.</div>
-    `;
+    if (resBox && badge && summary) {
+      resBox.style.display = 'block';
+      const pct = Math.round((correctCount / (totalWords || 1)) * 100);
+      badge.innerText = `Điểm: ${correctCount}/${totalWords} (${pct}%)`;
+      summary.innerHTML = `
+        <div style="margin-bottom:6px;"><b>Nhận xét:</b> ${gradingResult.summary || 'Em đã hoàn thành bài kiểm tra!'}</div>
+        <div style="font-size:12.5px; color:#15803D;">⏱️ Thời gian: <b>${Math.floor(this.examSeconds / 60)}p ${this.examSeconds % 60}s</b> • Kết quả đã được lưu vào Lịch sử & Google Drive.</div>
+      `;
+      resBox.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
 
-    resBox.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    this.saveUnitExamRecord(correctCount, learnedIdsToSave);
-  }
+    // 1. Cập nhật thống kê bài học đơn lẻ
+    if (!this.isCustomDrillActive && this.activeLesson?.file) {
+      const stats = this.getUnitStats(this.activeLesson.file);
+      stats.attemptsCount = (stats.attemptsCount || 0) + 1;
+      stats.bestScore = Math.max(stats.bestScore || 0, correctCount);
 
-  saveUnitExamRecord(score, newlyLearnedIds) {
-    const stats = this.getUnitStats(this.activeLesson.file);
-    stats.attemptsCount = (stats.attemptsCount || 0) + 1;
-    stats.bestScore = Math.max(stats.bestScore || 0, score);
+      if (!stats.learnedWordIds) stats.learnedWordIds = [];
+      learnedIdsToSave.forEach(id => {
+        if (!stats.learnedWordIds.includes(id)) stats.learnedWordIds.push(id);
+      });
+      stats.learnedCount = stats.learnedWordIds.length;
+      this.saveUnitStats(this.activeLesson.file, stats);
+    }
 
-    if (!stats.learnedWordIds) stats.learnedWordIds = [];
-    newlyLearnedIds.forEach(id => {
-      if (!stats.learnedWordIds.includes(id)) stats.learnedWordIds.push(id);
-    });
-    stats.learnedCount = stats.learnedWordIds.length;
-    this.saveUnitStats(this.activeLesson.file, stats);
-
-    const now = new Date();
-    const timeStr = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')} - ${String(now.getDate()).padStart(2,'0')}/${String(now.getMonth()+1).padStart(2,'0')}/${now.getFullYear()}`;
-    const speedStr = `${Math.floor(this.examSeconds/60)}p ${this.examSeconds%60}s`;
-
-    const attemptSnapshot = {
-      id: "attempt_vocab_" + Date.now(),
-      timestamp: timeStr,
-      testTitle: `Khảo Từ Vựng: ${this.activeLesson.title} (30 từ)`,
+    // 2. Đồng bộ Google Drive & LocalStorage qua VocabEvaluator
+    VocabEvaluator.syncResultToCloudAndLocal({
+      examTitle: this.activeLesson.title,
       studentName: this.user.name,
       studentEmail: this.user.email,
-      score: `${score}/30`,
-      timeSpent: speedStr,
-      details: `Đạt ${score}/30 từ trong ${speedStr}. Đã tích lũy ${stats.learnedCount}/30 từ thuộc bài này.`,
-      pageUrl: `vocab/index-v.html?unit=${this.activeLesson.unitNum || 1}`,
-      moduleType: "vocab"
+      scoreCorrect: correctCount,
+      totalQuestions: totalWords,
+      secondsSpent: this.examSeconds,
+      unitNum: this.activeLesson.unitNum,
+      isComprehensiveDrill: this.isCustomDrillActive,
+      selectedUnits: this.customDrillMeta?.selectedUnits || []
+    });
+  }
+
+  // =========================================================================
+  // 5. ĐIỀU KHIỂN MODAL KHẢO TỔNG HỢP (MULTI-UNIT DRILL)
+  // =========================================================================
+  setupDrillModalListeners() {
+    const modal = document.getElementById('modalCustomDrill');
+    const openBtn = document.getElementById('btnOpenCustomDrillModal');
+    const closeBtn = document.getElementById('btnCloseDrillModal');
+    const cancelBtn = document.getElementById('btnCancelDrillModal');
+    const launchBtn = document.getElementById('btnLaunchCustomDrill');
+
+    const openModal = () => {
+      if (!this.currentCourse || !this.currentCourse.lessons) return;
+      DrillEngine.initModal(this.currentCourse.lessons);
+      if (modal) modal.style.display = 'flex';
     };
 
-    try {
-      const localHist = JSON.parse(localStorage.getItem('ielts_local_history') || '[]');
-      localHist.unshift(attemptSnapshot);
-      localStorage.setItem('ielts_local_history', JSON.stringify(localHist));
-    } catch(e) {}
+    const closeModal = () => {
+      if (modal) modal.style.display = 'none';
+    };
 
-    fetch(CLOUD_SCRIPT_URL, {
-      method: "POST",
-      mode: "no-cors",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({ action: "save_attempt", attempt: attemptSnapshot })
-    }).catch(() => {});
+    openBtn?.addEventListener('click', openModal);
+    closeBtn?.addEventListener('click', closeModal);
+    cancelBtn?.addEventListener('click', closeModal);
+
+    launchBtn?.addEventListener('click', async () => {
+      try {
+        launchBtn.disabled = true;
+        launchBtn.innerText = "⏳ Đang bốc & trộn câu hỏi...";
+
+        const payload = await DrillEngine.buildDrillPayload();
+        closeModal();
+
+        const modeRadios = document.getElementsByName('drillExamMode');
+        let selectedMode = 'exam_paper';
+        for (const r of modeRadios) {
+          if (r.checked) {
+            selectedMode = r.value;
+            break;
+          }
+        }
+
+        const titleText = `Khảo Tổng ${payload.selectedUnits.length} Unit (${payload.totalQuestions} câu)`;
+
+        if (selectedMode === 'flashcard') {
+          this.isCustomDrillActive = true;
+          this.customDrillMeta = payload;
+          await this.openFlashcard('custom_drill', titleText, payload.words);
+        } else {
+          await this.openListExam('custom_drill', titleText, null, payload.words, payload);
+        }
+      } catch (err) {
+        alert(err.message || "Đã xảy ra lỗi khi tạo bài khảo tổng hợp!");
+      } finally {
+        launchBtn.disabled = false;
+        launchBtn.innerText = "🚀 BẮT ĐẦU KHẢO NGAY";
+      }
+    });
   }
 
   viewPastVocabAttempt(file, title, unitNum) {
@@ -664,6 +669,9 @@ HÃY TRẢ VỀ DUY NHẤT 1 CHUỖI JSON THUẦN (KHÔNG MARKDOWN, KHÔNG \`\`\
     this.stopExamTimer();
     this.removeFlashcardShortcuts();
     if (window.speechSynthesis) window.speechSynthesis.cancel();
+
+    this.isCustomDrillActive = false;
+    this.customDrillMeta = null;
 
     document.getElementById('flashcardScreen').style.display = 'none';
     document.getElementById('listExamScreen').style.display = 'none';
