@@ -1,7 +1,7 @@
 /**
  * vocab/js-v/evaluator-v.js
  * MODULE CHUYÊN TRÁCH THẨM ĐỊNH AI GEMINI & ĐỒNG BỘ KẾT QUẢ GOOGLE DRIVE
- * PHÒNG THỦ LỖI ĐA TẦNG - TỰ ĐỘNG CHẤM CẢ BÀI UNIT LẺ VÀ BÀI KHẢO TỔNG HỢP
+ * GỌI AI THEO THỨ TỰ ƯU TIÊN 8 MODEL CHUẨN XÁC - PHÒNG THỦ LỖI ĐA TẦNG
  */
 
 // 1. MÃ HÓA RUNTIME AUTH KEY CHO GEMINI AI
@@ -80,16 +80,20 @@ Trả về DUY NHẤT một chuỗi JSON thuần (KHÔNG chứa markdown, KHÔNG
   },
 
   /**
-   * Cơ chế gọi API thử lần lượt qua các model Flash của Gemini để chống nghẽn mạng
+   * Gọi API theo ĐÚNG THỨ TỰ ƯU TIÊN 8 MODEL CHUẨN ĐƯỢC CHỈ ĐỊNH
    */
   async callGeminiWithFallback(apiKey, promptText) {
     if (!apiKey) throw new Error("API Key không hợp lệ.");
 
     const models = [
-      'gemini-2.5-flash',
-      'gemini-2.0-flash',
-      'gemini-1.5-flash',
-      'gemini-2.0-flash-lite'
+      'gemini-3.5-flash-lite',
+      'gemini-3.1-flash-lite',
+      'gemini-2.5-flash-lite',
+      'gemini-3.8-flash',
+      'gemini-3.7-flash',
+      'gemini-3.6-flash',
+      'gemini-3.5-flash',
+      'gemini-2.5-flash'
     ];
 
     for (const model of models) {
@@ -108,11 +112,11 @@ Trả về DUY NHẤT một chuỗi JSON thuần (KHÔNG chứa markdown, KHÔNG
           if (generatedText) return generatedText;
         }
       } catch (networkErr) {
-        // Thử model tiếp theo trong danh sách
+        // Thử model tiếp theo theo đúng thứ tự ưu tiên
         continue;
       }
     }
-    throw new Error("Tất cả các model AI đều không phản hồi.");
+    throw new Error("Tất cả các model AI trong danh mục ưu tiên đều không phản hồi.");
   },
 
   /**
@@ -126,7 +130,6 @@ Trả về DUY NHẤT một chuỗi JSON thuần (KHÔNG chứa markdown, KHÔNG
 
       let isCorrect = false;
       if (userAns && userAns !== '(bỏ trống)') {
-        // So khớp trực tiếp hoặc so khớp với các cụm nghĩa cách nhau bởi dấu / hoặc dấu phẩy
         const subMeanings = stdMeaning.split(/[\/,;]/).map(s => s.trim()).filter(Boolean);
         const matchFound = subMeanings.some(sub => userAns.includes(sub) || sub.includes(userAns));
         if (matchFound) {
@@ -151,7 +154,6 @@ Trả về DUY NHẤT một chuỗi JSON thuần (KHÔNG chứa markdown, KHÔNG
 
   /**
    * ĐỒNG BỘ TOÀN DIỆN LÊN GOOGLE DRIVE & LOCALSTORAGE
-   * Tự động nhận diện bài Unit đơn lẻ hay bài Khảo Tổng Hợp
    */
   syncResultToCloudAndLocal({
     examTitle,
@@ -175,7 +177,6 @@ Trả về DUY NHẤT một chuỗi JSON thuần (KHÔNG chứa markdown, KHÔNG
     const now = new Date();
     const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')} - ${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
 
-    // Tạo chi tiết mô tả rõ ràng để giáo viên xem trên Google Sheet/Drive
     let detailsText = "";
     let testTitleFormatted = "";
     let pageUrl = "";
@@ -203,18 +204,17 @@ Trả về DUY NHẤT một chuỗi JSON thuần (KHÔNG chứa markdown, KHÔNG
       moduleType: "vocab"
     };
 
-    // 1. Lưu ngay vào LocalStorage máy học viên
+    // 1. Lưu vào LocalStorage
     try {
       const localHist = JSON.parse(localStorage.getItem('ielts_local_history') || '[]');
       localHist.unshift(attemptSnapshot);
-      // Giữ tối đa 150 lịch sử gần nhất để máy chạy nhẹ nhàng
       if (localHist.length > 150) localHist.pop();
       localStorage.setItem('ielts_local_history', JSON.stringify(localHist));
     } catch (e) {
       console.warn("Lỗi lưu lịch sử cục bộ:", e);
     }
 
-    // 2. Bắn dữ liệu lên Google Drive qua Apps Script (Chạy ngầm, không chặn giao diện)
+    // 2. Bắn lên Google Drive qua Apps Script
     try {
       fetch(CLOUD_SCRIPT_URL, {
         method: "POST",
