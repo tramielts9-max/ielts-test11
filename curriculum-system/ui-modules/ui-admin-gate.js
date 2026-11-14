@@ -1,11 +1,9 @@
 /**
  * curriculum-system/ui-modules/ui-admin-gate.js
- * MODULE PHÂN QUYỀN ADMIN, ĐÓNG VAI IMPERSONATION & TẠM KHÓA/MỞ KHÓA HỌC VIÊN
- * BẢN FULL ĐẦY ĐỦ 100% - BẢO TOÀN NGUYÊN VẸN MỌI TÍNH NĂNG BẢO MẬT
- * - Phân quyền Admin tối cao bất khả xâm phạm
- * - Cơ chế đóng vai học sinh (Impersonation) xem sạch dữ liệu thực tế
- * - Kiểm tra quyền truy cập học tập (chặn học sinh lười BTVN)
- * - Tạm khóa cảnh cáo / Mở khóa 1-click đồng bộ tức thì lên Google Drive Cloud
+ * MODULE PHÂN QUYỀN ADMIN & ĐÓNG VAI IMPERSONATION (ĐÃ GỠ BỎ TÍNH NĂNG KHÓA HỌC VIÊN)
+ * - Giữ nguyên toàn bộ phân quyền Admin tối cao
+ * - Giữ nguyên cơ chế đóng vai học sinh (Impersonation) xem sạch dữ liệu thực tế
+ * - Gỡ bỏ toàn bộ logic tạm khóa / chặn quyền truy cập Cloud của học viên
  */
 
 import { CONFIG } from '../../js/config.js';
@@ -132,99 +130,28 @@ export class UIAdminGateManager {
   }
 
   // =========================================================================
-  // 3. TẠM KHÓA CẢNH CÁO & MỞ KHÓA TRUY CẬP 1-CLICK TRÊN CLOUD
+  // 3. MỞ KHÓA TRUY CẬP MẶC ĐỊNH (ĐÃ GỠ BỎ TÍNH NĂNG KHÓA HỌC VIÊN)
   // =========================================================================
   async checkStudentAccess(email) {
     const clean = (email || '').toLowerCase().trim();
-    if (!clean || clean === 'guest') return true;
-
-    if (HARDCODED_ADMIN_EMAILS.includes(clean) || clean.includes('admin')) return true;
-
-    if (!CLOUD_SCRIPT_URL) return true;
-
-    try {
-      const response = await fetch(`${CLOUD_SCRIPT_URL}?action=check_student_access&studentId=${encodeURIComponent(clean)}`);
-      if (response.ok) {
-        const res = await response.json();
-        const isUnlocked = (res.isUnlocked !== false);
-        this.studentLockCache[clean] = isUnlocked;
-        return isUnlocked;
-      }
-    } catch (e) {
-      // Trường hợp mạng lag, giữ nguyên cache gần nhất
+    if (clean) {
+      this.studentLockCache[clean] = true;
     }
-
-    return this.studentLockCache[clean] !== false;
+    return true;
   }
 
   async toggleStudentLock(studentEmail, newStatus) {
     const clean = (studentEmail || '').toLowerCase().trim();
-    if (!clean || clean === 'guest') {
-      alert("⚠️ Vui lòng chọn học sinh trước khi thực hiện thao tác này!");
-      return;
+    if (clean) {
+      this.studentLockCache[clean] = true;
     }
-
-    if (HARDCODED_ADMIN_EMAILS.includes(clean)) {
-      alert("⚠️ Không thể khóa tài khoản Quản trị viên tối cao!");
-      return;
-    }
-
-    const isLocking = (newStatus === 'locked');
-    const confirmMsg = isLocking
-      ? `⚠️ Bạn có chắc muốn TẠM KHÓA học viên [${clean}] để cảnh cáo BTVN không?`
-      : `✅ Bạn có muốn MỞ KHÓA cho học viên [${clean}] tiếp tục học không?`;
-
-    if (!confirm(confirmMsg)) return;
-
-    try {
-      if (CLOUD_SCRIPT_URL) {
-        await fetch(CLOUD_SCRIPT_URL, {
-          method: "POST",
-          mode: "no-cors",
-          headers: { "Content-Type": "text/plain;charset=utf-8" },
-          body: JSON.stringify({
-            action: "admin_set_student_status",
-            studentId: clean,
-            status: newStatus
-          })
-        });
-      }
-
-      this.studentLockCache[clean] = !isLocking;
-      alert(isLocking 
-        ? `🚫 Đã TẠM KHÓA học viên [${clean}]. Máy học sinh sẽ hiện bảng cảnh cáo ngay lập tức!` 
-        : `🔓 Đã MỞ KHÓA thành công cho học viên [${clean}]! Học sinh có thể vào học lại ngay.`
-      );
-      this.context?.render?.();
-    } catch (e) {
-      alert("Lỗi kết nối máy chủ: " + e.message);
-    }
+    alert("🔓 Hệ thống đã gỡ bỏ toàn bộ tính năng khóa. Mọi học viên đều có quyền truy cập tự do.");
+    this.context?.render?.();
   }
 
   async checkReentry() {
-    let email = 'guest';
-    try {
-      email = (localStorage.getItem('ielts_student_email') || 'guest').toLowerCase().trim();
-    } catch (e) {}
-
-    const btn = document.getElementById('btnCheckReentry');
-    if (btn) {
-      btn.disabled = true;
-      btn.innerText = "⏳ Đang kiểm tra quyền truy cập...";
-    }
-
-    delete this.studentLockCache[email];
-    const isUnlocked = await this.checkStudentAccess(email);
-
-    if (isUnlocked) {
-      alert("🎉 Chào mừng em quay trở lại! Quyền truy cập đã được mở khóa hoàn toàn.");
+    if (typeof window !== 'undefined') {
       window.location.reload();
-    } else {
-      alert("⚠️ Thầy chưa mở khóa trên hệ thống. Em hãy nhắn tin báo Thầy kiểm tra rồi bấm lại nhé!");
-      if (btn) {
-        btn.disabled = false;
-        btn.innerText = "🔄 Thầy đã mở khóa, bấm để vào học tiếp";
-      }
     }
   }
 
@@ -235,7 +162,6 @@ export class UIAdminGateManager {
     if (!this.checkIsAdmin() && !this.isImpersonating()) return '';
 
     const currentTarget = this.context?.targetStudentEmail || 'Chính mình (Mặc định)';
-    const isTargetLocked = this.context?.targetStudentEmail ? (this.studentLockCache[this.context.targetStudentEmail] === false) : false;
 
     return `
       <div style="background:#8B1518; color:white; border-radius:14px; padding:12px 18px; margin-bottom:18px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; box-shadow:0 3px 0 #5E0C0E;">
@@ -245,7 +171,6 @@ export class UIAdminGateManager {
             <b style="font-size:14px;">BẢNG ĐIỀU PHỐI GIÁO VIÊN / ADMIN</b>
             <div style="font-size:12px; opacity:0.9;">
               Đang can thiệp cho: <b style="color:#FCD34D;">${currentTarget}</b>
-              ${this.context?.targetStudentEmail ? (isTargetLocked ? ' <span style="background:#DC2626; color:white; padding:1px 6px; border-radius:4px; font-size:11px; font-weight:900;">ĐANG BỊ KHÓA</span>' : ' <span style="background:#16A34A; color:white; padding:1px 6px; border-radius:4px; font-size:11px; font-weight:900;">HOẠT ĐỘNG</span>') : ''}
             </div>
           </div>
         </div>
@@ -256,12 +181,6 @@ export class UIAdminGateManager {
           <button type="button" onclick="window.curriculumUI.setTargetStudentEmail(document.getElementById('adminTargetEmailInput').value)" style="background:#FCD34D; color:#8B1518; border:none; padding:7px 12px; border-radius:8px; font-weight:900; font-size:12px; cursor:pointer;">
             🎯 Chọn HS
           </button>
-
-          ${this.context?.targetStudentEmail ? (
-            isTargetLocked
-              ? `<button type="button" onclick="window.curriculumUI.toggleStudentLock('${this.context.targetStudentEmail}', 'active')" style="background:#10B981; color:white; border:none; padding:7px 12px; border-radius:8px; font-weight:900; font-size:12px; cursor:pointer;" title="Mở khóa ngay cho học viên này tiếp tục học">🔓 Mở khóa lại</button>`
-              : `<button type="button" onclick="window.curriculumUI.toggleStudentLock('${this.context.targetStudentEmail}', 'locked')" style="background:#EF4444; color:white; border:none; padding:7px 12px; border-radius:8px; font-weight:900; font-size:12px; cursor:pointer;" title="Tạm khóa quyền truy cập để cảnh cáo BTVN">🚫 Tạm khóa HS</button>`
-          ) : ''}
 
           <button type="button" onclick="window.curriculumUI.triggerEditRoadmap()" style="background:#3B82F6; color:white; border:none; padding:7px 12px; border-radius:8px; font-weight:900; font-size:12px; cursor:pointer;" title="Mở lại form để điều chỉnh hoặc dùng AI">
             ✏️ Soạn Lại
