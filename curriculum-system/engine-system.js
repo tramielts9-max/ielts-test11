@@ -4,7 +4,7 @@
  * BẢN FULL ĐẦY ĐỦ 100% - BẢO TOÀN NGUYÊN VẸN MỌI HỢP ĐỒNG API CŨ
  * - KẾT NỐI 3 MODULE CON: SESSION MATRIX, REMEDIAL PRUNER, PHASE SCHEDULER
  * - DUY TRÌ 100% TƯƠNG THÍCH VỚI UI-SYSTEM.JS VÀ ROADMAP.HTML (KHÔNG LÀM GÃY HỆ THỐNG)
- * - TÍCH HỢP BẮC CẦU TỰ ĐỘNG TỪ BÀI THI DIAGNOSTIC SANG LỘ TRÌNH CHỜ DUYỆT (PENDING_ADMIN_APPROVAL)
+ * - TÍCH HỢP BẮC CẦU TỰ ĐỘNG TỪ BÀI THI DIAGNOSTIC SANG LỘ TRÌNH MỞ SẴN (APPROVED)
  */
 
 import { EngineSessionMatrix } from './engine-core/engine-session-matrix.js';
@@ -103,7 +103,7 @@ export class CurriculumEngineSystem {
 
   /**
    * BẮC CẦU TỰ ĐỘNG TỪ BÀI THI DIAGNOSTIC SANG LỘ TRÌNH 5 CHẶNG
-   * Sinh payload chuẩn có cờ "pending_admin_approval" để đưa vào Cổng duyệt Giáo viên
+   * Sinh payload chuẩn với trạng thái "approved" và mở khóa sẵn cho học viên vào học ngay
    */
   generateRoadmapFromDiagnostic(attemptSnapshot = {}) {
     const details = attemptSnapshot.details || {};
@@ -162,9 +162,9 @@ export class CurriculumEngineSystem {
       completedNodeIds: [],
       aiDiagnosticData: aiOptions,
 
-      // 🔴 BỘ CỜ BẢO MẬT & CỔNG PHÊ DUYỆT ADMIN GATE:
-      approvalStatus: "pending_admin_approval",
-      isLockedByAdmin: true,
+      // TRẠNG THÁI MỞ KHÓA TỰ DO (ĐÃ GỠ CỔNG KHÓA ADMIN GATE):
+      approvalStatus: "approved",
+      isLockedByAdmin: false,
 
       // Metadata nguồn gốc bài thi Diagnostic
       diagnosticSource: {
@@ -183,7 +183,7 @@ export class CurriculumEngineSystem {
 
 // Khởi tạo đối tượng Singleton và xuất khẩu toàn cục
 export const curriculumEngineSystem = new CurriculumEngineSystem();
-window.curriculumEngineSystem = curriculumEngineSystem;
+if (typeof window !== 'undefined') window.curriculumEngineSystem = curriculumEngineSystem;
 
 // Xuất khẩu các lớp con để các module khác có thể dùng độc lập khi cần
 export { EngineSessionMatrix, EngineRemedialPruner, EnginePhaseScheduler };
